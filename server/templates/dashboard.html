@@ -1,6 +1,41 @@
 {% extends "base.html" %}
 {% block content %}
 <h2>Staff Dashboard</h2>
+
+<h3 style="margin-top:10px;">CCTV Control Panel (Live Detections)</h3>
+<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;">
+  {% if videos|length == 0 %}
+    <div class="card">
+      <div class="meta">No videos found in <code>/static/videos</code>. Add .mp4 files there.<br>
+      To see boxes, run a vision worker for each camera (see note below).</div>
+    </div>
+  {% endif %}
+  {% for v in videos %}
+  {% set camname = v.name %}
+  <div class="card" id="card-{{ camname }}">
+    <div style="font-weight:600;margin-bottom:8px;">{{ camname }}</div>
+
+    <!-- Live detection preview (updates only when started) -->
+    <div style="position:relative">
+      <img id="img-{{ camname }}" src="/static/previews/{{ camname }}.jpg?ts=0"
+           style="width:100%;border-radius:10px;border:1px solid #1f2937;display:block;background:black;aspect-ratio:16/9;object-fit:contain">
+      <div class="meta" style="position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.50);padding:4px 8px;border-radius:8px;">live preview</div>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+      <button class="btn" onclick="startPreview('{{ camname }}')">Start</button>
+      <button class="btn" onclick="stopPreview('{{ camname }}')">Stop</button>
+      <a class="btn" href="{{ v.url }}" target="_blank" rel="noopener">Open raw video</a>
+    </div>
+
+    <div class="meta" style="margin-top:6px;">
+      Start = image refreshes from the worker’s annotated frames. Stop = freeze the image.
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<h3 style="margin-top:24px;">Items</h3>
 <table class="table">
   <thead>
     <tr><th>ID</th><th>Type</th><th>Zone</th><th>State</th><th>Reason</th><th>Action</th></tr>
@@ -26,6 +61,20 @@
 </table>
 
 <script>
+const timers = {}; // cam -> interval id
+
+function startPreview(cam){
+  stopPreview(cam);
+  const img = document.getElementById('img-' + cam);
+  timers[cam] = setInterval(() => {
+    const ts = Date.now();
+    img.src = `/static/previews/${cam}.jpg?ts=${ts}`;
+  }, 250); // ~4 FPS; adjust if needed
+}
+function stopPreview(cam){
+  if(timers[cam]) { clearInterval(timers[cam]); delete timers[cam]; }
+}
+
 async function resolveItem(id){
   const reason = prompt("Resolution note (optional):", "resolved by staff");
   try{
@@ -35,7 +84,6 @@ async function resolveItem(id){
       body: JSON.stringify(reason || "resolved by staff")
     });
     if(!r.ok){ alert("Failed to resolve"); return; }
-    // Update row instantly
     const row = document.querySelector(`tr[data-id="${id}"]`);
     if(row){
       const s = row.querySelector(".state");
@@ -50,4 +98,8 @@ async function resolveItem(id){
   }
 }
 </script>
+
+<div class="meta" style="margin-top:8px;">
+<small>Note: For each camera name above (e.g. <code>cam1</code>), run a vision worker that posts previews to <code>/api/preview/&lt;cam&gt;</code>. See the next step to enable that.</small>
+</div>
 {% endblock %}
