@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Found Items</h2>
+<div class="grid">
+  {% for it in items %}
+  <div class="card {{ it.state|lower }}">
+    <div class="thumb">{{ it.type }} ({{ it.color }})</div>
+    <div class="meta">
+      <div><strong>Zone:</strong> {{ it.zone }}</div>
+      <div><strong>Reason:</strong> {{ it.reason }}</div>
+      <div><strong>When:</strong> {{ it.ts }}</div>
+    </div>
+    <a class="btn" href="/i/{{ it.shortid }}">Open Item Page</a>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

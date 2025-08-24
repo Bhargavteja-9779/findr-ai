@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Staff Dashboard</h2>
+<table class="table">
+  <thead>
+    <tr><th>ID</th><th>Type</th><th>Zone</th><th>State</th><th>Reason</th><th>Action</th></tr>
+  </thead>
+  <tbody>
+  {% for it in items %}
+    <tr>
+      <td>{{ it.shortid }}</td>
+      <td>{{ it.type }} ({{ it.color }})</td>
+      <td>{{ it.zone }}</td>
+      <td class="{{ it.state|lower }}">{{ it.state }}</td>
+      <td>{{ it.reason }}</td>
+      <td>
+        {% if it.state != "RECOVERED" %}
+          <button disabled>Resolve (demo)</button>
+        {% else %}
+          <span>Resolved</span>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

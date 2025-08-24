@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Item: {{ item.type }} ({{ item.color }})</h2>
+<div class="card {{ item.state|lower }}">
+  <div class="meta">
+    <div><strong>Zone:</strong> {{ item.zone }}</div>
+    <div><strong>Status:</strong> {{ item.state }}</div>
+    <div><strong>Reason:</strong> {{ item.reason }}</div>
+    <div><strong>Time:</strong> {{ item.ts }}</div>
+  </div>
+  <p>This is a demo item page (QR flow later).</p>
+</div>
+<a class="btn" href="/billboard">← Back to Billboard</a>
+{% endblock %}
