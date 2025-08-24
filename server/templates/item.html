@@ -1,14 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Item: {{ item.type }} ({{ item.color }})</h2>
+<h2>Item: {{ item.type }}{% if item.color %} ({{ item.color }}){% endif %}</h2>
 <div class="card {{ item.state|lower }}">
+  {% if item.crop_path %}
+    <img src="/static/{{ item.crop_path }}" alt="{{ item.type }}" style="max-width:260px;border-radius:8px;display:block;margin-bottom:10px;">
+  {% endif %}
   <div class="meta">
     <div><strong>Zone:</strong> {{ item.zone }}</div>
     <div><strong>Status:</strong> {{ item.state }}</div>
     <div><strong>Reason:</strong> {{ item.reason }}</div>
     <div><strong>Time:</strong> {{ item.ts }}</div>
   </div>
-  <p>This is a demo item page (QR flow later).</p>
+  <div style="margin-top:10px;">
+    <div><strong>QR (share locally):</strong></div>
+    <img src="/q/{{ item.shortid }}" alt="QR" style="width:160px;height:160px;image-rendering:pixelated;border:1px solid #1f2937;border-radius:8px;">
+  </div>
 </div>
 <a class="btn" href="/billboard">← Back to Billboard</a>
 {% endblock %}

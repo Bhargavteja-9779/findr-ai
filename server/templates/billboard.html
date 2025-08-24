@@ -4,13 +4,21 @@
 <div class="grid">
   {% for it in items %}
   <div class="card {{ it.state|lower }}">
-    <div class="thumb">{{ it.type }} ({{ it.color }})</div>
+    <div class="thumb">
+      {% if it.crop_path %}
+        <img src="/static/{{ it.crop_path }}" alt="{{ it.type }}" style="max-width:100%;border-radius:8px;display:block;margin-bottom:6px;">
+      {% endif %}
+      {{ it.type }}{% if it.color %} ({{ it.color }}){% endif %}
+    </div>
     <div class="meta">
       <div><strong>Zone:</strong> {{ it.zone }}</div>
       <div><strong>Reason:</strong> {{ it.reason }}</div>
       <div><strong>When:</strong> {{ it.ts }}</div>
     </div>
-    <a class="btn" href="/i/{{ it.shortid }}">Open Item Page</a>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <a class="btn" href="/i/{{ it.shortid }}">Open Item Page</a>
+      <img src="/q/{{ it.shortid }}" alt="QR" style="width:96px;height:96px;image-rendering:pixelated;border:1px solid #1f2937;border-radius:8px;">
+    </div>
   </div>
   {% endfor %}
 </div>

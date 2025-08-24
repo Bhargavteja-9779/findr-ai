@@ -5,17 +5,17 @@
   <thead>
     <tr><th>ID</th><th>Type</th><th>Zone</th><th>State</th><th>Reason</th><th>Action</th></tr>
   </thead>
-  <tbody>
+  <tbody id="rows">
   {% for it in items %}
-    <tr>
+    <tr data-id="{{ it.shortid }}">
       <td>{{ it.shortid }}</td>
-      <td>{{ it.type }} ({{ it.color }})</td>
+      <td>{{ it.type }}{% if it.color %} ({{ it.color }}){% endif %}</td>
       <td>{{ it.zone }}</td>
-      <td class="{{ it.state|lower }}">{{ it.state }}</td>
-      <td>{{ it.reason }}</td>
+      <td class="state {{ it.state|lower }}">{{ it.state }}</td>
+      <td class="reason">{{ it.reason }}</td>
       <td>
         {% if it.state != "RECOVERED" %}
-          <button disabled>Resolve (demo)</button>
+          <button class="btn" onclick="resolveItem('{{ it.shortid }}')">Resolve</button>
         {% else %}
           <span>Resolved</span>
         {% endif %}
@@ -24,4 +24,30 @@
   {% endfor %}
   </tbody>
 </table>
+
+<script>
+async function resolveItem(id){
+  const reason = prompt("Resolution note (optional):", "resolved by staff");
+  try{
+    const r = await fetch(`/api/items/${id}/resolve`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(reason || "resolved by staff")
+    });
+    if(!r.ok){ alert("Failed to resolve"); return; }
+    // Update row instantly
+    const row = document.querySelector(`tr[data-id="${id}"]`);
+    if(row){
+      const s = row.querySelector(".state");
+      s.textContent = "RECOVERED";
+      s.className = "state recovered";
+      row.querySelector(".reason").textContent = reason || "resolved by staff";
+      const btn = row.querySelector("button.btn");
+      if(btn){ btn.replaceWith(document.createTextNode("Resolved")); }
+    }
+  }catch(e){
+    alert("Error: " + e);
+  }
+}
+</script>
 {% endblock %}

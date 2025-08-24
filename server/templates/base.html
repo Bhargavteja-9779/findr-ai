@@ -18,5 +18,18 @@
     {% block content %}{% endblock %}
   </main>
   <footer class="footer">Privacy-first · On‑prem · No faces stored</footer>
+  {% if title == "Billboard" %}
+  <audio id="chime" src="/static/chime.wav" preload="auto"></audio>
+  <script>
+    // Auto-refresh every 3s on billboard
+    setTimeout(() => { if (document.visibilityState === "visible") location.reload(); }, 1000);
+    // Play chime if any RED card
+    const hasRed = !!document.querySelector('.card.red');
+    if (hasRed) {
+      const a = document.getElementById('chime');
+      a && a.play().catch(()=>{ /* may be blocked until user interacts */ });
+    }
+  </script>
+  {% endif %}
 </body>
 </html>
