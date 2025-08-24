@@ -1,24 +1,24 @@
 from fastapi import FastAPI, Request, HTTPException, Body
-from fastapi.responses import HTMLResponse, JSONResponse, Response, PlainTextResponse
-
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, Response, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from typing import Optional
 from pydantic import BaseModel
 from server import db
-import qrcode, io, os
 from pathlib import Path
+import qrcode, io, os, json, requests, traceback
 
 app = FastAPI()
 
-# Init DB (NO seeding now)
-#db.init_db(seed=False)
+# Ollama config
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 
 @app.on_event("startup")
 def on_startup():
     db.init_db(seed=False)
-
+    Path("server/static/previews").mkdir(parents=True, exist_ok=True)
+    Path("server/static/crops").mkdir(parents=True, exist_ok=True)
 
 # Static + templates
 app.mount("/static", StaticFiles(directory="server/static"), name="static")
@@ -29,16 +29,15 @@ templates = Jinja2Templates(directory="server/templates")
 def health():
     return {"ok": True}
 
-# ----- Web pages -----
+# ----- Pages -----
 @app.get("/billboard", response_class=HTMLResponse)
 def billboard(request: Request):
-    items = db.list_items(states=["RED"])  # only RED items on public screen
+    items = db.list_items(states=["RED"])
     return templates.TemplateResponse("billboard.html", {"request": request, "items": items, "title": "Billboard"})
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
     items = db.list_items()
-    # discover local videos
     vids_dir = Path("server/static/videos")
     videos = []
     if vids_dir.exists():
@@ -55,7 +54,6 @@ def item_page(shortid: str, request: Request):
 
 @app.get("/q/{shortid}")
 def qr(shortid: str):
-    """PNG QR code for /i/{shortid} (uses FINDR_BASE_URL if set)."""
     base = os.getenv("FINDR_BASE_URL", "http://127.0.0.1:8123")
     url = f"{base}/i/{shortid}"
     img = qrcode.make(url)
@@ -63,15 +61,17 @@ def qr(shortid: str):
     img.save(buf, format="PNG")
     return Response(content=buf.getvalue(), media_type="image/png")
 
-# ----- Minimal APIs (Vision worker calls) -----
+# ----- APIs -----
 class UpsertItem(BaseModel):
     shortid: str
     type: str
     color: Optional[str] = None
     zone: str
-    state: str   # WITH_OWNER, AMBER, RED, RECOVERED
+    state: str
     reason: Optional[str] = None
     crop_path: Optional[str] = None
+    description: Optional[str] = None
+    keywords: Optional[str] = None
 
 @app.get("/api/items")
 def api_list_items(state: Optional[str] = None):
@@ -99,16 +99,95 @@ def api_resolve_item(shortid: str, reason: str = Body(default="resolved by staff
 
 @app.post("/api/preview/{cam}")
 async def api_preview(cam: str, request: Request):
-    """
-    Receive a JPEG (body bytes) and write to /static/previews/{cam}.jpg.
-    Sent by the vision worker. Returns 'ok' text.
-    """
     try:
         data = await request.body()
-        if not data or len(data) < 100:  # sanity check
+        if not data or len(data) < 100:
             raise HTTPException(status_code=400, detail="empty frame")
         out = Path("server/static/previews") / f"{cam}.jpg"
         out.write_bytes(data)
         return PlainTextResponse("ok")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# -------- Clear All (DB + files), returns counts ----------
+@app.post("/api/clear_all")
+def api_clear_all():
+    try:
+        items_before, events_before = db.hard_reset()
+        # clear crops & previews
+        cleared = {"crops": 0, "previews": 0}
+        for name, d in (("crops", Path("server/static/crops")), ("previews", Path("server/static/previews"))):
+            d.mkdir(parents=True, exist_ok=True)
+            for f in d.glob("*"):
+                try:
+                    f.unlink()
+                    cleared[name] += 1
+                except Exception:
+                    pass
+        return {
+            "ok": True,
+            "db_dropped": True,
+            "items_before": items_before,
+            "events_before": events_before,
+            "files_cleared": cleared,
+        }
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"clear_all failed: {e}")
+
+# -------- Describe via Ollama ----------
+@app.post("/api/items/{shortid}/describe")
+def api_describe(shortid: str):
+    it = db.get_item(shortid)
+    if not it:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    sys_prompt = (
+      "You are generating a very short lost-and-found description and keywords.\n"
+      "Return STRICT JSON: {\"description\": \"...\", \"keywords\": [\"...\", \"...\"]}\n"
+      "Description <= 18 words. 5-8 lowercase keywords, no punctuation, single words if possible."
+    )
+    user_input = f"type={it['type']}; color={it.get('color') or ''}; zone={it['zone']}; reason={it.get('reason') or ''}"
+
+    try:
+        r = requests.post(
+            f"{OLLAMA_HOST}/api/generate",
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": f"{sys_prompt}\nINPUT: {user_input}\nJSON:",
+                "stream": False,
+                "options": {"temperature": 0.2}
+            },
+            timeout=25
+        )
+        r.raise_for_status()
+        txt = (r.json().get("response") or "").strip()
+        # try to extract JSON
+        start, end = txt.find("{"), txt.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            txt = txt[start:end+1]
+        data = json.loads(txt) if txt else {}
+        desc = (data.get("description") or "").strip()
+        kws = data.get("keywords") or []
+        keywords_str = " ".join([str(k).strip().lower().replace(",", "") for k in kws if str(k).strip()])
+        if not desc:
+            desc = f"{it['type'].title()} possibly left in {it['zone']}"
+        ok = db.set_description(shortid, desc, keywords_str)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Item not found while updating")
+        return {"ok": True, "shortid": shortid, "description": desc, "keywords": keywords_str.split() if keywords_str else []}
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Ollama unreachable: {e}")
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Describe failed: {e}")
+
+# -------- Search page/API ----------
+@app.get("/search", response_class=HTMLResponse)
+def search_page(request: Request, q: Optional[str] = None):
+    results = db.search_items(q) if q else []
+    return templates.TemplateResponse("search.html", {"request": request, "q": q or "", "results": results, "title": "Search"})
+
+@app.get("/api/search")
+def api_search(q: str):
+    return {"results": db.search_items(q)}

@@ -1,20 +1,58 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Item: {{ item.type }}{% if item.color %} ({{ item.color }}){% endif %}</h2>
-<div class="card {{ item.state|lower }}">
-  {% if item.crop_path %}
-    <img src="/static/{{ item.crop_path }}" alt="{{ item.type }}" style="max-width:260px;border-radius:8px;display:block;margin-bottom:10px;">
-  {% endif %}
-  <div class="meta">
-    <div><strong>Zone:</strong> {{ item.zone }}</div>
-    <div><strong>Status:</strong> {{ item.state }}</div>
-    <div><strong>Reason:</strong> {{ item.reason }}</div>
-    <div><strong>Time:</strong> {{ item.ts }}</div>
+<h2>Item {{ item.shortid }}</h2>
+
+<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;">
+  <div class="card" style="text-align:center">
+    {% if item.crop_path %}
+      <img src="/static/{{ item.crop_path }}" alt="{{ item.type }}" style="max-width:100%;border-radius:12px;">
+    {% else %}
+      <div style="height:200px;display:flex;align-items:center;justify-content:center;border:2px dashed #374151;border-radius:12px;color:#9ca3af;">No Image</div>
+    {% endif %}
+    <div style="margin-top:10px;">
+      <img src="/q/{{ item.shortid }}" alt="QR" style="width:120px;height:120px;image-rendering:pixelated;border:1px solid #1f2937;border-radius:10px;">
+    </div>
   </div>
-  <div style="margin-top:10px;">
-    <div><strong>QR (share locally):</strong></div>
-    <img src="/q/{{ item.shortid }}" alt="QR" style="width:160px;height:160px;image-rendering:pixelated;border:1px solid #1f2937;border-radius:8px;">
+
+  <div class="card">
+    <div class="thumb" style="font-weight:700;font-size:18px;">{{ item.type }}{% if item.color %} ({{ item.color }}){% endif %}</div>
+    <div class="meta"><strong>Zone:</strong> {{ item.zone }}</div>
+    <div class="meta"><strong>State:</strong> {{ item.state }}</div>
+    <div class="meta"><strong>Reason:</strong> {{ item.reason }}</div>
+    <div class="meta"><strong>When:</strong> {{ item.ts }}</div>
+    <hr style="border-color:#1f2937;margin:12px 0">
+    <div class="meta"><strong>Description:</strong> <span id="desc">{{ item.description or '—' }}</span></div>
+    <div class="meta"><strong>Keywords:</strong> <span id="kws">{{ item.keywords or '—' }}</span></div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn" onclick="describe('{{ item.shortid }}')">Describe</button>
+      {% if item.state != 'RECOVERED' %}
+      <button class="btn" onclick="resolve('{{ item.shortid }}')">Resolve</button>
+      {% endif %}
+      <a class="btn" href="/dashboard">Back to Dashboard</a>
+    </div>
   </div>
 </div>
-<a class="btn" href="/billboard">← Back to Billboard</a>
+
+<script>
+async function describe(id){
+  try{
+    const r = await fetch(`/api/items/${id}/describe`, {method:"POST"});
+    if(!r.ok){ alert("Describe failed"); return; }
+    const { description, keywords } = await r.json();
+    document.getElementById('desc').textContent = description || '—';
+    document.getElementById('kws').textContent  = (keywords && keywords.join) ? keywords.join(' ') : (keywords || '—');
+  }catch(e){ alert("Error: " + e); }
+}
+async function resolve(id){
+  const reason = prompt("Resolution note (optional):", "resolved by staff");
+  try{
+    const r = await fetch(`/api/items/${id}/resolve`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(reason || "resolved by staff")
+    });
+    if(!r.ok){ alert("Resolve failed"); return; }
+    location.reload();
+  }catch(e){ alert("Error: " + e); }
+}
+</script>
 {% endblock %}

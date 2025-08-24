@@ -1,24 +1,42 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Found Items</h2>
-<div class="grid">
+<h2 style="text-align:center;margin-bottom:20px;">Found Items</h2>
+
+<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:24px;">
   {% for it in items %}
-  <div class="card {{ it.state|lower }}">
-    <div class="thumb">
+  <div class="card {{ it.state|lower }}" style="text-align:center;padding:16px;">
+    
+    <!-- Item image -->
+    <div class="thumb" style="margin-bottom:12px;">
       {% if it.crop_path %}
-        <img src="/static/{{ it.crop_path }}" alt="{{ it.type }}" style="max-width:100%;border-radius:8px;display:block;margin-bottom:6px;">
+        <img src="/static/{{ it.crop_path }}" 
+             alt="{{ it.type }}" 
+             style="max-width:100%;max-height:180px;border-radius:8px;display:block;margin:0 auto;">
+      {% else %}
+        <div style="height:180px;display:flex;align-items:center;justify-content:center;
+                    border:2px dashed #374151;border-radius:8px;color:#9ca3af;">
+          No Image
+        </div>
       {% endif %}
+    </div>
+
+    <!-- Item name -->
+    <div style="font-size:18px;font-weight:600;margin-bottom:12px;">
       {{ it.type }}{% if it.color %} ({{ it.color }}){% endif %}
     </div>
-    <div class="meta">
-      <div><strong>Zone:</strong> {{ it.zone }}</div>
-      <div><strong>Reason:</strong> {{ it.reason }}</div>
-      <div><strong>When:</strong> {{ it.ts }}</div>
+
+    <!-- QR code -->
+    <div style="margin-bottom:12px;">
+      <img src="/q/{{ it.shortid }}" 
+           alt="QR" 
+           style="width:120px;height:120px;image-rendering:pixelated;border:2px solid #1f2937;border-radius:12px;">
     </div>
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-      <a class="btn" href="/i/{{ it.shortid }}">Open Item Page</a>
-      <img src="/q/{{ it.shortid }}" alt="QR" style="width:96px;height:96px;image-rendering:pixelated;border:1px solid #1f2937;border-radius:8px;">
+
+    <!-- Show location button = link to item page -->
+    <div>
+      <a class="btn" href="/i/{{ it.shortid }}">📍 Show Location</a>
     </div>
+
   </div>
   {% endfor %}
 </div>

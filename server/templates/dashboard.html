@@ -2,6 +2,10 @@
 {% block content %}
 <h2>Staff Dashboard</h2>
 
+<div style="margin:10px 0;">
+  <button class="btn danger" onclick="clearAll()">🗑️ Clear All Data</button>
+</div>
+
 <h3 style="margin-top:10px;">CCTV Control Panel (Live Detections)</h3>
 <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;">
   {% if videos|length == 0 %}
@@ -10,16 +14,19 @@
       To see boxes, run a vision worker for each camera (see note below).</div>
     </div>
   {% endif %}
+
   {% for v in videos %}
   {% set camname = v.name %}
   <div class="card" id="card-{{ camname }}">
-    <div style="font-weight:600;margin-bottom:8px;">{{ camname }}</div>
+    <div style="font-weight:600;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
+      <span>{{ camname }}</span>
+      <span id="ts-{{ camname }}" class="meta"></span>
+    </div>
 
-    <!-- Live detection preview (updates only when started) -->
+    <!-- Smooth, no-flicker live preview -->
     <div style="position:relative">
-      <img id="img-{{ camname }}" src="/static/previews/{{ camname }}.jpg?ts=0"
-           style="width:100%;border-radius:10px;border:1px solid #1f2937;display:block;background:black;aspect-ratio:16/9;object-fit:contain">
-      <div class="meta" style="position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.50);padding:4px 8px;border-radius:8px;">live preview</div>
+      <img id="img-{{ camname }}" class="camimg" src="/static/previews/{{ camname }}.jpg?ts=0"
+           style="width:100%;border-radius:10px;border:1px solid #1f2937;display:block;background:black;aspect-ratio:16/9;object-fit:contain;opacity:1;transition:opacity .15s ease;">
     </div>
 
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
@@ -29,7 +36,7 @@
     </div>
 
     <div class="meta" style="margin-top:6px;">
-      Start = image refreshes from the worker’s annotated frames. Stop = freeze the image.
+      Start = smooth image refresh from the worker’s annotated frames (no flicker).
     </div>
   </div>
   {% endfor %}
@@ -38,7 +45,9 @@
 <h3 style="margin-top:24px;">Items</h3>
 <table class="table">
   <thead>
-    <tr><th>ID</th><th>Type</th><th>Zone</th><th>State</th><th>Reason</th><th>Action</th></tr>
+    <tr>
+      <th>ID</th><th>Type</th><th>Zone</th><th>State</th><th>Reason</th><th>Description</th><th>Keywords</th><th>Action</th>
+    </tr>
   </thead>
   <tbody id="rows">
   {% for it in items %}
@@ -48,7 +57,11 @@
       <td>{{ it.zone }}</td>
       <td class="state {{ it.state|lower }}">{{ it.state }}</td>
       <td class="reason">{{ it.reason }}</td>
-      <td>
+      <td class="desc">{{ it.description or '' }}</td>
+      <td class="kws">{{ it.keywords or '' }}</td>
+      <td style="white-space:nowrap">
+        <a class="btn" href="/i/{{ it.shortid }}">Open</a>
+        <button class="btn" onclick="describeItem('{{ it.shortid }}')">Describe</button>
         {% if it.state != "RECOVERED" %}
           <button class="btn" onclick="resolveItem('{{ it.shortid }}')">Resolve</button>
         {% else %}
@@ -61,16 +74,40 @@
 </table>
 
 <script>
+/* --------- Smooth preview loader (no flicker) ---------
+   Preload to an offscreen Image, then swap the visible <img> src
+   only after the new frame has fully loaded. Also updates a tiny
+   timestamp label. One interval per cam.
+------------------------------------------------------- */
 const timers = {}; // cam -> interval id
+const preloaders = {}; // cam -> Image object
 
 function startPreview(cam){
   stopPreview(cam);
-  const img = document.getElementById('img-' + cam);
-  timers[cam] = setInterval(() => {
-    const ts = Date.now();
-    img.src = `/static/previews/${cam}.jpg?ts=${ts}`;
-  }, 250); // ~4 FPS; adjust if needed
+  const tick = () => {
+    const url = `/static/previews/${cam}.jpg?ts=${Date.now()}`;
+    const pre = preloaders[cam] || new Image();
+    preloaders[cam] = pre;
+    pre.onload = () => {
+      const img = document.getElementById('img-' + cam);
+      if (!img) return;
+      // Fade in very quickly (opacity transition already on element)
+      img.style.opacity = 0.9;
+      img.src = url;
+      requestAnimationFrame(() => { img.style.opacity = 1; });
+      const tsEl = document.getElementById('ts-' + cam);
+      if (tsEl) tsEl.textContent = new Date().toLocaleTimeString();
+    };
+    pre.onerror = () => {
+      // fail silently; keep previous frame
+    };
+    pre.src = url;
+  };
+  // ~4 FPS default from worker; 250ms is smooth without flicker
+  timers[cam] = setInterval(tick, 250);
+  tick(); // immediate first load
 }
+
 function stopPreview(cam){
   if(timers[cam]) { clearInterval(timers[cam]); delete timers[cam]; }
 }
@@ -86,20 +123,47 @@ async function resolveItem(id){
     if(!r.ok){ alert("Failed to resolve"); return; }
     const row = document.querySelector(`tr[data-id="${id}"]`);
     if(row){
-      const s = row.querySelector(".state");
-      s.textContent = "RECOVERED";
-      s.className = "state recovered";
+      row.querySelector(".state").textContent = "RECOVERED";
+      row.querySelector(".state").className = "state recovered";
       row.querySelector(".reason").textContent = reason || "resolved by staff";
-      const btn = row.querySelector("button.btn");
+      const btn = row.querySelector("button.btn[onclick^='resolveItem']");
       if(btn){ btn.replaceWith(document.createTextNode("Resolved")); }
     }
   }catch(e){
     alert("Error: " + e);
   }
 }
+
+async function describeItem(id){
+  try{
+    const r = await fetch(`/api/items/${id}/describe`, { method: "POST" });
+    if(!r.ok){
+      const t = await r.text();
+      alert("Describe failed: " + t);
+      return;
+    }
+    const { description, keywords } = await r.json();
+    const row = document.querySelector(`tr[data-id="${id}"]`);
+    if(row){
+      if(description) row.querySelector(".desc").textContent = description;
+      if(keywords)    row.querySelector(".kws").textContent  = keywords.join ? keywords.join(" ") : keywords;
+    }
+  }catch(e){
+    alert("Error: " + e);
+  }
+}
+
+async function clearAll(){
+  if(!confirm("This will delete ALL items, crops, and previews. Continue?")) return;
+  try{
+    const r = await fetch("/api/clear_all", {method:"POST"});
+    if(!r.ok){ alert("Failed to clear"); return; }
+    location.reload();
+  }catch(e){ alert("Error: " + e); }
+}
 </script>
 
 <div class="meta" style="margin-top:8px;">
-<small>Note: For each camera name above (e.g. <code>cam1</code>), run a vision worker that posts previews to <code>/api/preview/&lt;cam&gt;</code>. See the next step to enable that.</small>
+<small>Note: Run one worker per camera name (e.g., <code>sample1</code>) and post previews to <code>/api/preview/&lt;cam&gt;</code>.</small>
 </div>
 {% endblock %}

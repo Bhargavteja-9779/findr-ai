@@ -34,6 +34,9 @@ T_AMBER    = _envf("T_AMBER", 1.5)       # seconds OS>=THETA1 to enter AMBER
 T_RED      = _envf("T_RED", 3.0)         # seconds OS>=THETA2 to enter RED
 LEAVING_FRAMES = _envi("LEAVING_FRAMES", 2)
 
+# Auto-describe states (comma-separated), e.g. "AMBER,RED" or "AMBER" etc.
+AUTO_DESCRIBE_STATES = _envs("AUTO_DESCRIBE_STATES", "AMBER,RED").replace(" ", "").split(",")
+
 # COCO classes of interest
 CLS_PERSON = 0
 TARGET_ITEM_IDS = {24, 39, 63, 67, 73}  # backpack, bottle, laptop, phone, book
@@ -110,6 +113,8 @@ class ItemTrack:
     _away_counter: int = 0
     # UI crop
     crop_relpath: Optional[str] = None
+    # ensure we only call describe once per item
+    described: bool = False
 
     def compute_os(self) -> float:
         # Faster ramp for demo
@@ -289,8 +294,12 @@ def run_worker(cam_name: str, video_source: Union[str,int], api_base: str):
                 tr.state = "RED"
 
             reason = f"dist:{tr.nearest_dist_norm*diag:.0f}px; dwell:{tr.dwell_nearby_sec:.1f}s; leaving:{'yes' if tr.leaving_flag else 'no'}"
+
+            # ---- On state change
             if tr.state != prev_state:
                 print(f"[STATE] {tr.shortid}: {prev_state} → {tr.state} | {reason}")
+
+                # Save crop on RED only (privacy policy)
                 if tr.state == "RED":
                     x1,y1,x2,y2 = tr.box
                     pad_x = int(0.10 * (x2 - x1)); pad_y = int(0.10 * (y2 - y1))
@@ -302,6 +311,19 @@ def run_worker(cam_name: str, video_source: Union[str,int], api_base: str):
                         fpath = CROPS_DIR / fname
                         Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)).save(fpath, quality=90)
                         tr.crop_relpath = f"crops/{fname}"
+
+                # Notify server about the new state
+                api_upsert(api_base, tr, reason)
+
+                # Auto-describe once when first reaching AMBER or RED (configurable)
+                if (not tr.described) and (tr.state in AUTO_DESCRIBE_STATES):
+                    try:
+                        requests.post(f"{api_base}/api/items/{tr.shortid}/describe", timeout=5)
+                        tr.described = True
+                    except Exception as e:
+                        print("[Describe trigger] failed:", e)
+            else:
+                # State unchanged; optionally keep backend updated
                 api_upsert(api_base, tr, reason)
 
         # ---- Draw overlays

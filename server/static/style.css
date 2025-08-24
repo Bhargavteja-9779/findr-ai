@@ -20,3 +20,4 @@ h2{margin:12px 0 16px}
 .green{border-left:6px solid var(--green)}
 .amber{border-left:6px solid var(--amber)}
 .red{border-left:6px solid var(--red)}
+.btn.danger{ background:#b91c1c; color:#fff; border-color:#7f1d1d; }

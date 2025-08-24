@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Search Items</h2>
+
+<form method="get" action="/search" style="display:flex;gap:8px;margin:10px 0 16px;">
+  <input type="text" name="q" value="{{ q }}" placeholder="Search by type, color, zone, description, keywords…" 
+         style="flex:1;padding:10px;border-radius:10px;border:1px solid #374151;background:#111827;color:#e5e7eb">
+  <button class="btn" type="submit">Search</button>
+</form>
+
+{% if q and results|length == 0 %}
+  <div class="card"><div class="meta">No results for <strong>{{ q }}</strong>.</div></div>
+{% endif %}
+
+<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;">
+  {% for it in results %}
+  <div class="card {{ it.state|lower }}">
+    <div class="thumb" style="margin-bottom:8px;text-align:center">
+      {% if it.crop_path %}
+        <img src="/static/{{ it.crop_path }}" alt="{{ it.type }}" style="max-width:100%;max-height:160px;border-radius:8px">
+      {% endif %}
+    </div>
+    <div style="font-weight:600">{{ it.type }}{% if it.color %} ({{ it.color }}){% endif %}</div>
+    <div class="meta">State: {{ it.state }} · Zone: {{ it.zone }}</div>
+    {% if it.description %}
+      <div class="meta">Desc: {{ it.description }}</div>
+    {% endif %}
+    {% if it.keywords %}
+      <div class="meta">Tags: {{ it.keywords }}</div>
+    {% endif %}
+    <div style="margin-top:8px">
+      <a class="btn" href="/i/{{ it.shortid }}">Open</a>
+      {% if not it.description %}
+      <button class="btn" onclick="describeItem('{{ it.shortid }}')">Describe</button>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+async function describeItem(id){
+  try{
+    const r = await fetch(`/api/items/${id}/describe`, {method:"POST"});
+    if(!r.ok){ alert("Describe failed"); return; }
+    location.reload();
+  }catch(e){ alert("Error: " + e); }
+}
+</script>
+{% endblock %}
