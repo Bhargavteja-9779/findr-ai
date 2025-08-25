@@ -82,10 +82,10 @@ Dashboard: http://127.0.0.1:8123/dashboard
 Search: http://127.0.0.1:8123/search
 
 👥 Team
-[You] (Lead) → Full-stack + AI pipeline
+P N Bhargav Teja (Lead) → Full-stack + AI pipeline
 
-Member 2 → Vision worker (YOLO, ownership, OpenCV)
+Shruti → Vision worker (YOLO, ownership, OpenCV)
 
-Member 3 → Backend + DB + API + analytics
+Pranathi → Backend + DB + API + analytics
 
-Member 4 → UI/UX, billboard, pitch design
+Deepika → UI/UX, billboard, pitch design
